@@ -126,9 +126,12 @@ The scheduled refresh checks the authoritative AWS sources every six hours. When
 2. commits only generated `feeds/ipv4/**` changes;
 3. opens a pull request to `main` using the short-lived repository `GITHUB_TOKEN`;
 4. explicitly dispatches the `CI` workflow against the exact automation branch because GitHub intentionally suppresses normal recursive workflow triggering from `GITHUB_TOKEN` events;
-5. uses `.github/workflows/merge-feed-updates.yml` to verify the PR author, marker, title, head SHA, base branch, changed-file scope, and required checks;
-6. squash-merges the PR and deletes the automation branch only after the required `CI / test` check succeeds;
-7. explicitly dispatches `CI` on the updated `main` branch after the automated merge.
+5. waits for that dispatched run to complete and requires `CI / test` to succeed on the exact automation commit;
+6. verifies the PR author, marker, title, head branch, head SHA, base branch, repository, and that every changed file is under `feeds/ipv4/`;
+7. squash-merges the PR and deletes the automation branch only after all guards pass;
+8. explicitly dispatches and verifies `CI` again on the resulting `main` commit.
+
+The validation and guarded merge are intentionally kept in the same scheduled refresh workflow. A separate `workflow_run` chain is not used because events produced by `GITHUB_TOKEN` are subject to GitHub's recursive workflow suppression rules.
 
 This flow is compatible with protected `main` branches. It does not require a personal access token, a long-lived repository secret, an administrator bypass, or GitHub's repository-level native auto-merge option.
 
@@ -140,13 +143,12 @@ Automation uses only GitHub's built-in short-lived `GITHUB_TOKEN`. No PAT or cus
 
 The repository must have **Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests** enabled so the scheduled workflow can create its feed refresh pull request.
 
-Workflow permissions are declared explicitly and narrowly in each workflow:
+Workflow permissions are declared explicitly and narrowly:
 
-- refresh workflow: `actions: write`, `contents: write`, `pull-requests: write`;
-- CI workflow: `contents: read` only;
-- merge workflow: `actions: write`, `checks: read`, `contents: write`, `pull-requests: write`.
+- refresh workflow: `actions: write`, `checks: read`, `contents: write`, `pull-requests: write`;
+- CI workflow: `contents: read` only.
 
-The privileged merge workflow is triggered from `workflow_run` and validates that the successful CI run belongs to the exact automation commit before it can merge. It refuses PRs whose author, title, marker, repository, base branch, head SHA, or changed-file scope does not match the automated feed-refresh contract.
+The refresh workflow refuses to merge if the successful CI result is not attached to the exact expected commit, if the PR identity no longer matches the automation contract, or if any file outside `feeds/ipv4/` is present in the automated PR.
 
 For offline testing or controlled builds:
 
