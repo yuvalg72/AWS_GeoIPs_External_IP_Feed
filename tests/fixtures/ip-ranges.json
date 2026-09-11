@@ -1,0 +1,11 @@
+{
+  "syncToken": "1234567890",
+  "createDate": "2026-09-11-00-00-00",
+  "prefixes": [
+    {"ip_prefix": "3.2.34.0/26", "region": "us-east-2", "service": "AMAZON", "network_border_group": "us-east-2"},
+    {"ip_prefix": "3.2.34.64/26", "region": "us-east-2", "service": "EC2", "network_border_group": "us-east-2"},
+    {"ip_prefix": "15.230.0.0/24", "region": "us-east-1", "service": "AMAZON", "network_border_group": "us-east-1"},
+    {"ip_prefix": "15.230.1.0/24", "region": "us-east-1", "service": "AMAZON", "network_border_group": "us-east-1-atl-1"}
+  ],
+  "ipv6_prefixes": []
+}
