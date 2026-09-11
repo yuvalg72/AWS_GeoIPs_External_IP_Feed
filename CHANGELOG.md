@@ -15,3 +15,5 @@ All notable changes to this project will be documented here.
 
 ### Changed
 - Scheduled refreshes no longer push generated feed updates directly to `main`.
+- Automated refresh authentication now uses GitHub's short-lived `GITHUB_TOKEN`; no PAT or `FEED_BOT_TOKEN` repository secret is required.
+- Automated CI is explicitly dispatched for the refresh branch, and post-merge CI is explicitly dispatched for `main`.
