@@ -120,37 +120,33 @@ python3 scripts/generate_feeds.py
 python3 scripts/validate_feeds.py feeds/ipv4
 ```
 
-The scheduled refresh checks the authoritative AWS sources every six hours. When generated feed content changes, it does not push directly to `main`. Instead it:
+The scheduled refresh checks the authoritative AWS sources every six hours. When generated feed content changes, it does not push directly to protected `main`. Instead it:
 
 1. creates a dedicated `automation/aws-feed-refresh-<run>-<attempt>` branch from current `main`;
 2. commits only generated `feeds/ipv4/**` changes;
-3. opens a pull request to `main` using the repository secret `FEED_BOT_TOKEN`;
-4. lets the normal required `CI / test` check run on the pull request;
-5. uses `.github/workflows/merge-feed-updates.yml` to verify the PR identity, head SHA, base branch, changed-file scope, and required checks;
-6. squash-merges the PR and deletes the automation branch only after validation succeeds.
+3. opens a pull request to `main` using the short-lived repository `GITHUB_TOKEN`;
+4. explicitly dispatches the `CI` workflow against the exact automation branch because GitHub intentionally suppresses normal recursive workflow triggering from `GITHUB_TOKEN` events;
+5. uses `.github/workflows/merge-feed-updates.yml` to verify the PR author, marker, title, head SHA, base branch, changed-file scope, and required checks;
+6. squash-merges the PR and deletes the automation branch only after the required `CI / test` check succeeds;
+7. explicitly dispatches `CI` on the updated `main` branch after the automated merge.
 
-This flow is intentionally compatible with protected `main` branches. It does not use an administrator bypass and does not require GitHub's repository-level native auto-merge option.
+This flow is compatible with protected `main` branches. It does not require a personal access token, a long-lived repository secret, an administrator bypass, or GitHub's repository-level native auto-merge option.
 
 `manifest.json` records source hashes and the `ip-ranges.json` publication metadata so feed changes can be audited.
 
 ### Automation authentication
 
-Automated refresh PRs require an Actions repository secret named `FEED_BOT_TOKEN`.
+Automation uses only GitHub's built-in short-lived `GITHUB_TOKEN`. No PAT or custom bot secret is required.
 
-Use a fine-grained personal access token scoped only to `yuvalg72/AWS_GeoIPs_External_IP_Feed` with these repository permissions:
+The repository must have **Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests** enabled so the scheduled workflow can create its feed refresh pull request.
 
-- **Contents:** Read and write
-- **Pull requests:** Read and write
+Workflow permissions are declared explicitly and narrowly in each workflow:
 
-The dedicated token is intentional. GitHub documents special workflow-trigger behavior for events created with the repository `GITHUB_TOKEN`; using a separate narrowly scoped token allows the automated PR to enter the same normal pull-request CI path as a human-created PR.
+- refresh workflow: `actions: write`, `contents: write`, `pull-requests: write`;
+- CI workflow: `contents: read` only;
+- merge workflow: `actions: write`, `checks: read`, `contents: write`, `pull-requests: write`.
 
-One-time setup with GitHub CLI:
-
-```powershell
-gh secret set FEED_BOT_TOKEN --repo yuvalg72/AWS_GeoIPs_External_IP_Feed
-```
-
-GitHub CLI then prompts for the secret value and stores it as the repository Actions secret.
+The privileged merge workflow is triggered from `workflow_run` and validates that the successful CI run belongs to the exact automation commit before it can merge. It refuses PRs whose author, title, marker, repository, base branch, head SHA, or changed-file scope does not match the automated feed-refresh contract.
 
 For offline testing or controlled builds:
 
