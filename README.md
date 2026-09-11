@@ -141,6 +141,10 @@ python3 scripts/generate_feeds.py \
 - AWS documents that `ip-ranges.json` does not cover every AWS service and does not include BYOIP ranges. Region/NBG feeds inherit those source limitations.
 - `raw.githubusercontent.com` is a convenient public distribution endpoint, but it is not an AWS or firewall-vendor SLA. Critical environments may prefer to mirror the generated `.txt` feeds internally.
 
+## Maintenance status
+
+Active. The repository is intended to continuously regenerate and validate its public IPv4 feeds from the authoritative AWS sources every six hours.
+
 ## License
 
 The generator code and repository documentation are licensed under the MIT License. AWS-published source data remains attributable to AWS and is not relicensed by this repository.
