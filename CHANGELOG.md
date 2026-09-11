@@ -10,3 +10,8 @@ All notable changes to this project will be documented here.
 - AWS Region and network border group feeds from `ip-ranges.json`.
 - FortiGate external-resource examples.
 - Automated validation and scheduled refresh workflows.
+- Protected refresh pipeline that publishes generated feed changes through an automation branch and pull request.
+- Automatic merge workflow that only merges validated feed-only PRs after the required `CI / test` check succeeds.
+
+### Changed
+- Scheduled refreshes no longer push generated feed updates directly to `main`.
