@@ -1,0 +1,47 @@
+name: Refresh AWS IP feeds
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+    paths:
+      - "scripts/**"
+      - "data/**"
+      - ".github/workflows/update-feeds.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-aws-ip-feeds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Generate feeds from authoritative AWS sources
+        run: python3 scripts/generate_feeds.py
+      - name: Validate generated feeds
+        run: python3 scripts/validate_feeds.py feeds/ipv4
+      - name: Commit only when feeds changed
+        shell: bash
+        run: |
+          if git diff --quiet -- feeds/ipv4; then
+            echo "No feed changes detected."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feeds/ipv4
+          git commit -m "chore: refresh AWS IP feeds [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
