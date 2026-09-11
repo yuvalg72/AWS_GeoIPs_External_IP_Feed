@@ -120,7 +120,37 @@ python3 scripts/generate_feeds.py
 python3 scripts/validate_feeds.py feeds/ipv4
 ```
 
-The scheduled workflow checks the authoritative AWS sources every six hours and commits only when generated feed content changes. `manifest.json` records source hashes and the `ip-ranges.json` publication metadata so changes can be audited.
+The scheduled refresh checks the authoritative AWS sources every six hours. When generated feed content changes, it does not push directly to `main`. Instead it:
+
+1. creates a dedicated `automation/aws-feed-refresh-<run>-<attempt>` branch from current `main`;
+2. commits only generated `feeds/ipv4/**` changes;
+3. opens a pull request to `main` using the repository secret `FEED_BOT_TOKEN`;
+4. lets the normal required `CI / test` check run on the pull request;
+5. uses `.github/workflows/merge-feed-updates.yml` to verify the PR identity, head SHA, base branch, changed-file scope, and required checks;
+6. squash-merges the PR and deletes the automation branch only after validation succeeds.
+
+This flow is intentionally compatible with protected `main` branches. It does not use an administrator bypass and does not require GitHub's repository-level native auto-merge option.
+
+`manifest.json` records source hashes and the `ip-ranges.json` publication metadata so feed changes can be audited.
+
+### Automation authentication
+
+Automated refresh PRs require an Actions repository secret named `FEED_BOT_TOKEN`.
+
+Use a fine-grained personal access token scoped only to `yuvalg72/AWS_GeoIPs_External_IP_Feed` with these repository permissions:
+
+- **Contents:** Read and write
+- **Pull requests:** Read and write
+
+The dedicated token is intentional. GitHub documents special workflow-trigger behavior for events created with the repository `GITHUB_TOKEN`; using a separate narrowly scoped token allows the automated PR to enter the same normal pull-request CI path as a human-created PR.
+
+One-time setup with GitHub CLI:
+
+```powershell
+gh secret set FEED_BOT_TOKEN --repo yuvalg72/AWS_GeoIPs_External_IP_Feed
+```
+
+GitHub CLI then prompts for the secret value and stores it as the repository Actions secret.
 
 For offline testing or controlled builds:
 
