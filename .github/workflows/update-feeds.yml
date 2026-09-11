@@ -36,12 +36,12 @@ jobs:
       - name: Commit only when feeds changed
         shell: bash
         run: |
-          if git diff --quiet -- feeds/ipv4; then
+          git add feeds/ipv4
+          if git diff --cached --quiet; then
             echo "No feed changes detected."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add feeds/ipv4
           git commit -m "chore: refresh AWS IP feeds [skip ci]"
           git push origin "HEAD:${GITHUB_REF_NAME}"
