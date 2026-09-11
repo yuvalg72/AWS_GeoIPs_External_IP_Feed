@@ -125,13 +125,15 @@ The scheduled refresh checks the authoritative AWS sources every six hours. When
 1. creates a dedicated `automation/aws-feed-refresh-<run>-<attempt>` branch from current `main`;
 2. commits only generated `feeds/ipv4/**` changes;
 3. opens a pull request to `main` using the short-lived repository `GITHUB_TOKEN`;
-4. explicitly dispatches the `CI` workflow against the exact automation branch because GitHub intentionally suppresses normal recursive workflow triggering from `GITHUB_TOKEN` events;
-5. waits for that dispatched run to complete and requires `CI / test` to succeed on the exact automation commit;
+4. keeps feed-only automation PRs out of the normal `pull_request` CI trigger, because GitHub places `pull_request` workflow runs created by `GITHUB_TOKEN` into an approval-required state;
+5. explicitly dispatches the `CI` workflow against the exact automation branch and waits for `CI / test` to succeed on the exact automation commit;
 6. verifies the PR author, marker, title, head branch, head SHA, base branch, repository, and that every changed file is under `feeds/ipv4/`;
 7. enables GitHub native auto-merge only after all guards pass, using squash merge and an exact head-SHA match so branch protection remains authoritative;
 8. waits for GitHub to complete the protected merge and then explicitly dispatches and verifies `CI` again on the resulting `main` commit.
 
-The validation and guarded merge orchestration are intentionally kept in the same scheduled refresh workflow. A separate `workflow_run` chain is not used because events produced by `GITHUB_TOKEN` are subject to GitHub's recursive workflow suppression rules.
+Normal pull requests that change source code, tests, workflows, documentation, or other non-generated repository content still trigger `CI` automatically through `pull_request`. A pull request whose changes are exclusively under `feeds/ipv4/**` relies on the refresh workflow's explicit `workflow_dispatch` validation path instead. This prevents an approval-required duplicate CI run from blocking native auto-merge while preserving the required `test` check on the exact feed commit.
+
+The validation and guarded merge orchestration are intentionally kept in the same scheduled refresh workflow. A separate `workflow_run` chain is not used because events produced by `GITHUB_TOKEN` are subject to GitHub's recursive workflow controls.
 
 This flow is compatible with protected `main` branches. It does not require a personal access token, a long-lived repository secret, or an administrator bypass. GitHub's repository-level native auto-merge feature is intentionally used so the platform, rather than the workflow, performs the final merge after branch protection requirements are satisfied.
 
