@@ -16,7 +16,9 @@ All notable changes to this project will be documented here.
 - Scheduled refreshes no longer push generated feed updates directly to `main`.
 - Automated refresh authentication uses GitHub's short-lived `GITHUB_TOKEN`; no PAT or `FEED_BOT_TOKEN` repository secret is required.
 - Automated CI is explicitly dispatched for the refresh branch, and post-merge CI is explicitly dispatched for `main`.
-- The refresh workflow now waits for the exact dispatched CI run, verifies the successful `test` check on the automation commit, validates the PR contract and changed-file scope, and only then enables GitHub native auto-merge.
+- Feed-only pull requests under `feeds/ipv4/**` are excluded from the normal `pull_request` CI trigger so GitHub does not create an approval-required duplicate workflow run when the PR is opened by `GITHUB_TOKEN`; the refresh workflow supplies the required `test` check through an explicit `workflow_dispatch` run instead.
+- Normal pull requests that touch source, tests, workflows, documentation, or other non-generated content continue to trigger CI automatically.
+- The refresh workflow waits for the exact dispatched CI run, verifies the successful `test` check on the automation commit, validates the PR contract and changed-file scope, and only then enables GitHub native auto-merge.
 - Protected feed refreshes use `gh pr merge --auto --squash --match-head-commit` instead of attempting an immediate bot merge that branch protection rejects.
 - The workflow verifies repository auto-merge is enabled before creating an automation PR and waits for the protected merge to complete before validating the resulting `main` commit.
 - Removed the separate `workflow_run` merge workflow because GitHub's recursive workflow suppression prevented that chain from firing when the upstream dispatch was created with `GITHUB_TOKEN`.
