@@ -8,7 +8,10 @@ on:
       - completed
 
 permissions:
-  contents: read
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: merge-validated-aws-feed-refresh
@@ -17,24 +20,16 @@ concurrency:
 jobs:
   merge:
     if: >-
-      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'automation/aws-feed-refresh-')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      GH_TOKEN: ${{ secrets.FEED_BOT_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
       EXPECTED_PR_TITLE: "chore: refresh AWS IP feeds"
       PR_MARKER: "<!-- aws-geoip-feed-refresh -->"
     steps:
-      - name: Require feed bot token
-        shell: bash
-        run: |
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::error::Repository secret FEED_BOT_TOKEN is required to merge validated feed refresh PRs."
-            exit 1
-          fi
-
       - name: Resolve and verify automated pull request
         id: pr
         shell: bash
@@ -60,6 +55,7 @@ jobs:
           PR_NUMBER="$(jq -r '.[0].number' <<< "$PR_JSON")"
           PR_TITLE="$(jq -r '.[0].title' <<< "$PR_JSON")"
           PR_BODY="$(jq -r '.[0].body // ""' <<< "$PR_JSON")"
+          PR_AUTHOR="$(jq -r '.[0].user.login' <<< "$PR_JSON")"
           PR_HEAD_SHA="$(jq -r '.[0].head.sha' <<< "$PR_JSON")"
           PR_HEAD_REPO="$(jq -r '.[0].head.repo.full_name' <<< "$PR_JSON")"
           PR_BASE="$(jq -r '.[0].base.ref' <<< "$PR_JSON")"
@@ -71,6 +67,11 @@ jobs:
 
           if [[ "$PR_BODY" != *"$PR_MARKER"* ]]; then
             echo "::error::Automated PR marker is missing."
+            exit 1
+          fi
+
+          if [[ "$PR_AUTHOR" != "github-actions[bot]" ]]; then
+            echo "::error::Automated PR author is ${PR_AUTHOR}, expected github-actions[bot]."
             exit 1
           fi
 
@@ -120,3 +121,11 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --squash \
             --delete-branch
+
+      - name: Dispatch CI on updated main
+        shell: bash
+        run: |
+          gh workflow run ci.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main
+          echo "Dispatched post-merge CI for main."
