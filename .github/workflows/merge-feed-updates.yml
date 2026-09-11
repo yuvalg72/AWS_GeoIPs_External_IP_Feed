@@ -1,0 +1,121 @@
+name: Merge validated AWS feed refresh
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-validated-aws-feed-refresh
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'automation/aws-feed-refresh-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.FEED_BOT_TOKEN }}
+      EXPECTED_PR_TITLE: "chore: refresh AWS IP feeds"
+      PR_MARKER: "<!-- aws-geoip-feed-refresh -->"
+    steps:
+      - name: Require feed bot token
+        shell: bash
+        run: |
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Repository secret FEED_BOT_TOKEN is required to merge validated feed refresh PRs."
+            exit 1
+          fi
+
+      - name: Resolve and verify automated pull request
+        id: pr
+        shell: bash
+        env:
+          BOT_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          PR_JSON="$(
+            gh api \
+              --method GET \
+              "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f state=open \
+              -f base=main \
+              -f head="${GITHUB_REPOSITORY_OWNER}:${BOT_BRANCH}"
+          )"
+
+          PR_COUNT="$(jq 'length' <<< "$PR_JSON")"
+          if [[ "$PR_COUNT" != "1" ]]; then
+            echo "::error::Expected exactly one open PR for ${BOT_BRANCH}; found ${PR_COUNT}."
+            exit 1
+          fi
+
+          PR_NUMBER="$(jq -r '.[0].number' <<< "$PR_JSON")"
+          PR_TITLE="$(jq -r '.[0].title' <<< "$PR_JSON")"
+          PR_BODY="$(jq -r '.[0].body // ""' <<< "$PR_JSON")"
+          PR_HEAD_SHA="$(jq -r '.[0].head.sha' <<< "$PR_JSON")"
+          PR_HEAD_REPO="$(jq -r '.[0].head.repo.full_name' <<< "$PR_JSON")"
+          PR_BASE="$(jq -r '.[0].base.ref' <<< "$PR_JSON")"
+
+          if [[ "$PR_TITLE" != "$EXPECTED_PR_TITLE" ]]; then
+            echo "::error::Unexpected automated PR title: ${PR_TITLE}"
+            exit 1
+          fi
+
+          if [[ "$PR_BODY" != *"$PR_MARKER"* ]]; then
+            echo "::error::Automated PR marker is missing."
+            exit 1
+          fi
+
+          if [[ "$PR_HEAD_REPO" != "$GITHUB_REPOSITORY" || "$PR_BASE" != "main" ]]; then
+            echo "::error::PR repository/base verification failed."
+            exit 1
+          fi
+
+          if [[ "$PR_HEAD_SHA" != "$CI_HEAD_SHA" ]]; then
+            echo "::error::CI SHA ${CI_HEAD_SHA} does not match current PR head ${PR_HEAD_SHA}."
+            exit 1
+          fi
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Verify automated PR changes only generated feed files
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          FILES="$(
+            gh api \
+              --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+              --jq '.[].filename'
+          )"
+
+          if [[ -z "$FILES" ]]; then
+            echo "::error::Automated feed refresh PR contains no changed files."
+            exit 1
+          fi
+
+          UNEXPECTED="$(grep -Ev '^feeds/ipv4/' <<< "$FILES" || true)"
+          if [[ -n "$UNEXPECTED" ]]; then
+            echo "::error::Automated PR contains files outside feeds/ipv4/:"
+            echo "$UNEXPECTED"
+            exit 1
+          fi
+
+      - name: Verify required checks and merge
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          gh pr checks "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --required
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch
